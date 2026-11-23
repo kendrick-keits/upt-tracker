@@ -1,0 +1,50 @@
+name: UPT job watch
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"   # every 3 hours (UTC)
+  workflow_dispatch:          # "Run workflow" button for manual checks
+
+permissions:
+  contents: write   # save data/state.json back to the repo
+  pages: write
+  id-token: write
+
+concurrency:
+  group: upt-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check MilRecruiter for UPT postings
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: python upt_watch.py
+
+      - name: Save state
+        run: |
+          git config user.name "upt-watch-bot"
+          git config user.email "upt-watch-bot@users.noreply.github.com"
+          git add data/state.json
+          git diff --cached --quiet || git commit -m "Update UPT job state"
+          git push
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
